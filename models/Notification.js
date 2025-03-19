@@ -1,55 +1,42 @@
 const mongoose = require("mongoose");
+const Schema = mongoose.Schema;
 
-const notificationSchema = new mongoose.Schema({
-  recipient: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-  },
-  type: {
-    type: String,
-    enum: [
-      "new_review",
-      "upcoming_lesson",
-      "payment_received",
-      "payment_due",
-      "course_update",
-      "new_message",
-      "system_announcement",
-    ],
-    required: true,
-  },
-  title: {
-    type: String,
-    required: true,
-  },
-  message: {
-    type: String,
-    required: true,
-  },
-  read: {
-    type: Boolean,
-    default: false,
-  },
-  relatedItem: {
-    itemType: {
+const notificationSchema = new Schema(
+  {
+    recipient: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    type: {
       type: String,
-      enum: ["course", "review", "payment", "message", "user"],
+      enum: ["session", "message", "payment", "system", "course"],
+      required: true,
     },
-    itemId: {
-      type: mongoose.Schema.Types.ObjectId,
+    title: {
+      type: String,
+      required: true,
+    },
+    message: {
+      type: String,
+      required: true,
+    },
+    relatedId: {
+      type: Schema.Types.ObjectId,
+      required: false,
+    },
+    read: {
+      type: Boolean,
+      default: false,
     },
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
+  {
+    timestamps: true,
+  }
+);
 
-// Add indexes for frequent queries
-notificationSchema.index({ recipient: 1 });
-notificationSchema.index({ read: 1 });
-notificationSchema.index({ createdAt: -1 });
+// Add index to improve query performance
+notificationSchema.index({ recipient: 1, read: 1, createdAt: -1 });
 
 const Notification = mongoose.model("Notification", notificationSchema);
 

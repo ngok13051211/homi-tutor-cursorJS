@@ -1,4 +1,5 @@
 const { Course, TutorProfile, User, Category } = require("../models");
+const notificationService = require("../utils/notificationService");
 
 /**
  * Get all courses
@@ -107,11 +108,37 @@ const createCourse = async (req, res) => {
       duration,
     } = req.body;
 
+    console.log("Creating course with data:", req.body);
+
     // Verify the category exists
     const categoryExists = await Category.findById(category);
     if (!categoryExists) {
       return res.status(400).json({ message: "Invalid category" });
     }
+
+    // Validate required fields
+    if (
+      !name ||
+      !category ||
+      !subject ||
+      !description ||
+      !hourlyRate ||
+      !learningFormat ||
+      !duration
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Ensure schedule is in the correct format
+    const normalizedSchedule = Array.isArray(schedule)
+      ? schedule
+      : [
+          {
+            day: "Monday",
+            startTime: "09:00",
+            endTime: "17:00",
+          },
+        ];
 
     // Create the course
     const course = await Course.create({
@@ -121,11 +148,20 @@ const createCourse = async (req, res) => {
       subject,
       description,
       hourlyRate,
-      schedule,
+      schedule: normalizedSchedule,
       learningFormat,
       duration,
       students: [],
     });
+
+    // Create notification for the tutor
+    await notificationService.createNotification(
+      req.user._id,
+      "course",
+      "Course Created Successfully",
+      `Your course "${name}" has been created successfully and is now available for enrollment.`,
+      course._id
+    );
 
     if (course) {
       res.status(201).json(course);
@@ -133,7 +169,18 @@ const createCourse = async (req, res) => {
       res.status(400).json({ message: "Invalid course data" });
     }
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error creating course:", error);
+    // Provide more detailed error message
+    res.status(500).json({
+      message: "Course creation failed",
+      error: error.message,
+      details: error.errors
+        ? Object.keys(error.errors).map((key) => ({
+            field: key,
+            message: error.errors[key].message,
+          }))
+        : null,
+    });
   }
 };
 
@@ -256,9 +303,29 @@ const enrollCourse = async (req, res) => {
     }
 
     await course.save();
+
+    // Create notification for the student
+    await notificationService.createNotification(
+      req.user._id,
+      "course",
+      "Enrolled in Course",
+      `You have successfully enrolled in "${course.name}". You can now access the course materials.`,
+      course._id
+    );
+
+    // Create notification for the tutor
+    await notificationService.createNotification(
+      course.tutor,
+      "course",
+      "New Student Enrollment",
+      `A new student (${req.user.name}) has enrolled in your course "${course.name}".`,
+      course._id
+    );
+
     res.json({ message: "Successfully enrolled in course", course });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error enrolling in course:", error);
+    res.status(500).json({ message: "Enrollment failed" });
   }
 };
 

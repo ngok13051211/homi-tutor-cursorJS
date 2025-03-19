@@ -8,7 +8,8 @@ const tutorProfileSchema = new mongoose.Schema({
   },
   biography: {
     type: String,
-    required: true,
+    required: false,
+    default: "",
   },
   subjects: [
     {

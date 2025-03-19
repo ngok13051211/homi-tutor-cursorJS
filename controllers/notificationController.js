@@ -1,50 +1,60 @@
 const { Notification } = require("../models");
+const asyncHandler = require("express-async-handler");
 
 /**
- * Get user's notifications
- * @route GET /api/notifications
- * @access Private
+ * @desc    Get all notifications for the logged-in user
+ * @route   GET /api/notifications
+ * @access  Private
  */
-const getUserNotifications = async (req, res) => {
+const getNotifications = asyncHandler(async (req, res) => {
   try {
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
-
-    const notifications = await Notification.find({ recipient: req.user._id })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    // Get total count for pagination
-    const total = await Notification.countDocuments({
+    const notifications = await Notification.find({
       recipient: req.user._id,
-    });
+    }).sort({ createdAt: -1 });
+    res.json(notifications);
+  } catch (error) {
+    console.error("Error getting notifications:", error);
+    res.status(500).json({ message: "Failed to retrieve notifications" });
+  }
+});
 
-    // Get count of unread notifications
-    const unreadCount = await Notification.countDocuments({
-      recipient: req.user._id,
+/**
+ * @desc    Create a new notification
+ * @route   POST /api/notifications
+ * @access  Private (Admin only)
+ */
+const createNotification = asyncHandler(async (req, res) => {
+  try {
+    const { recipient, type, title, message, relatedId } = req.body;
+
+    if (!recipient || !type || !title || !message) {
+      return res.status(400).json({
+        message: "Please provide recipient, type, title, and message",
+      });
+    }
+
+    const notification = await Notification.create({
+      recipient,
+      type,
+      title,
+      message,
+      relatedId,
       read: false,
     });
 
-    res.json({
-      notifications,
-      page,
-      pages: Math.ceil(total / limit),
-      total,
-      unreadCount,
-    });
+    res.status(201).json(notification);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error creating notification:", error);
+    res.status(500).json({ message: "Failed to create notification" });
   }
-};
+});
 
 /**
- * Mark notification as read
- * @route PUT /api/notifications/:id/read
- * @access Private
+ * @desc    Mark a notification as read
+ * @route   POST /api/notifications/:id/read
+ * @access  Private
  */
-const markNotificationAsRead = async (req, res) => {
+const markAsRead = asyncHandler(async (req, res) => {
   try {
     const notification = await Notification.findById(req.params.id);
 
@@ -52,11 +62,11 @@ const markNotificationAsRead = async (req, res) => {
       return res.status(404).json({ message: "Notification not found" });
     }
 
-    // Check if user is the recipient
+    // Check if the notification belongs to the user
     if (notification.recipient.toString() !== req.user._id.toString()) {
       return res
         .status(403)
-        .json({ message: "Not authorized to modify this notification" });
+        .json({ message: "Not authorized to access this notification" });
     }
 
     notification.read = true;
@@ -64,16 +74,17 @@ const markNotificationAsRead = async (req, res) => {
 
     res.json({ message: "Notification marked as read" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error marking notification as read:", error);
+    res.status(500).json({ message: "Failed to mark notification as read" });
   }
-};
+});
 
 /**
- * Mark all notifications as read
- * @route PUT /api/notifications/read-all
- * @access Private
+ * @desc    Mark all notifications as read
+ * @route   POST /api/notifications/read-all
+ * @access  Private
  */
-const markAllNotificationsAsRead = async (req, res) => {
+const markAllAsRead = asyncHandler(async (req, res) => {
   try {
     await Notification.updateMany(
       { recipient: req.user._id, read: false },
@@ -82,16 +93,19 @@ const markAllNotificationsAsRead = async (req, res) => {
 
     res.json({ message: "All notifications marked as read" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error marking all notifications as read:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to mark all notifications as read" });
   }
-};
+});
 
 /**
- * Delete a notification
- * @route DELETE /api/notifications/:id
- * @access Private
+ * @desc    Delete a notification
+ * @route   DELETE /api/notifications/:id
+ * @access  Private
  */
-const deleteNotification = async (req, res) => {
+const deleteNotification = asyncHandler(async (req, res) => {
   try {
     const notification = await Notification.findById(req.params.id);
 
@@ -99,43 +113,20 @@ const deleteNotification = async (req, res) => {
       return res.status(404).json({ message: "Notification not found" });
     }
 
-    // Check if user is the recipient
+    // Check if the notification belongs to the user
     if (notification.recipient.toString() !== req.user._id.toString()) {
       return res
         .status(403)
         .json({ message: "Not authorized to delete this notification" });
     }
 
-    await notification.remove();
+    await notification.deleteOne();
     res.json({ message: "Notification removed" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error deleting notification:", error);
+    res.status(500).json({ message: "Failed to delete notification" });
   }
-};
-
-/**
- * Create a notification (Admin only)
- * @route POST /api/notifications
- * @access Private (Admin only)
- */
-const createNotification = async (req, res) => {
-  try {
-    const { recipient, type, title, message, relatedItem } = req.body;
-
-    const notification = await Notification.create({
-      recipient,
-      type,
-      title,
-      message,
-      relatedItem,
-      createdAt: Date.now(),
-    });
-
-    res.status(201).json(notification);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
+});
 
 /**
  * Create a system announcement for all users or a specific role
@@ -174,10 +165,10 @@ const createAnnouncement = async (req, res) => {
 };
 
 module.exports = {
-  getUserNotifications,
-  markNotificationAsRead,
-  markAllNotificationsAsRead,
-  deleteNotification,
+  getNotifications,
   createNotification,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
   createAnnouncement,
 };

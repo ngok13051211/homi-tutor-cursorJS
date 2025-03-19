@@ -58,12 +58,9 @@ const uploadCertification = async (req, res) => {
     const { name, issuer, year } = req.body;
 
     if (!name || !issuer || !year) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Please provide name, issuer, and year for the certification",
-        });
+      return res.status(400).json({
+        message: "Please provide name, issuer, and year for the certification",
+      });
     }
 
     // Find tutor profile

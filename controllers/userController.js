@@ -35,11 +35,16 @@ const registerUser = async (req, res) => {
     if (user.role === "student") {
       await StudentProfile.create({ user: user._id });
     } else if (user.role === "tutor") {
+      // Create tutor profile with default values for required fields
       await TutorProfile.create({
         user: user._id,
         biography: "",
-        experience: 0,
-        hourlyRate: 0,
+        experience: 0, // Default experience to 0 years
+        hourlyRate: 20, // Default hourly rate
+        subjects: [], // Empty array for subjects
+        certifications: [], // Empty array for certifications
+        rating: 0,
+        reviewCount: 0,
       });
     }
 
@@ -55,7 +60,17 @@ const registerUser = async (req, res) => {
       res.status(400).json({ message: "Invalid user data" });
     }
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Registration error:", error);
+    res.status(500).json({
+      message: "Registration failed",
+      error: error.message,
+      details: error.errors
+        ? Object.keys(error.errors).map((key) => ({
+            field: key,
+            message: error.errors[key].message,
+          }))
+        : null,
+    });
   }
 };
 
@@ -85,6 +100,7 @@ const loginUser = async (req, res) => {
       res.status(401).json({ message: "Invalid email or password" });
     }
   } catch (error) {
+    console.error("Login error:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -121,6 +137,7 @@ const getUserProfile = async (req, res) => {
       profile,
     });
   } catch (error) {
+    console.error("Get profile error:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -144,26 +161,19 @@ const updateUserProfile = async (req, res) => {
     if (req.body.profilePicture) user.profilePicture = req.body.profilePicture;
     if (req.body.password) user.password = req.body.password;
 
-    const updatedUser = await user.save();
-
     // Update role-specific profile
     if (user.role === "student" && req.body.studentProfile) {
-      const studentProfile = await StudentProfile.findOne({ user: user._id });
-
+      const studentProfile = await StudentProfile.findOne({
+        user: user._id,
+      });
       if (studentProfile) {
-        const {
-          learningGoals,
-          educationLevel,
-          grade,
-          parentName,
-          parentContact,
-        } = req.body.studentProfile;
-
-        if (learningGoals) studentProfile.learningGoals = learningGoals;
-        if (educationLevel) studentProfile.educationLevel = educationLevel;
-        if (grade) studentProfile.grade = grade;
-        if (parentName) studentProfile.parentName = parentName;
-        if (parentContact) studentProfile.parentContact = parentContact;
+        // Update student profile fields
+        if (req.body.studentProfile.grade !== undefined)
+          studentProfile.grade = req.body.studentProfile.grade;
+        if (req.body.studentProfile.school)
+          studentProfile.school = req.body.studentProfile.school;
+        if (req.body.studentProfile.interests)
+          studentProfile.interests = req.body.studentProfile.interests;
 
         await studentProfile.save();
       }
@@ -171,27 +181,49 @@ const updateUserProfile = async (req, res) => {
       const tutorProfile = await TutorProfile.findOne({ user: user._id });
 
       if (tutorProfile) {
-        const { biography, experience, hourlyRate, certifications } =
+        // Update tutor profile fields
+        const { biography, experience, hourlyRate, subjects, certifications } =
           req.body.tutorProfile;
 
-        if (biography) tutorProfile.biography = biography;
-        if (experience) tutorProfile.experience = experience;
-        if (hourlyRate) tutorProfile.hourlyRate = hourlyRate;
-        if (certifications) tutorProfile.certifications = certifications;
+        if (biography !== undefined) tutorProfile.biography = biography;
+        if (experience !== undefined) tutorProfile.experience = experience;
+        if (hourlyRate !== undefined) tutorProfile.hourlyRate = hourlyRate;
+        if (subjects) tutorProfile.subjects = subjects;
+
+        // Handle certifications update
+        if (certifications && Array.isArray(certifications)) {
+          // Validate each certification
+          const validCertifications = certifications.filter(
+            (cert) => cert.name && cert.issuer && cert.year
+          );
+
+          tutorProfile.certifications = validCertifications;
+        }
 
         await tutorProfile.save();
       }
     }
 
+    await user.save();
+
+    // Return updated user info
+    const updatedUser = await User.findById(user._id).select("-password");
+    let profile = null;
+
+    if (user.role === "student") {
+      profile = await StudentProfile.findOne({ user: user._id });
+    } else if (user.role === "tutor") {
+      profile = await TutorProfile.findOne({ user: user._id }).populate(
+        "subjects"
+      );
+    }
+
     res.json({
-      _id: updatedUser._id,
-      name: updatedUser.name,
-      email: updatedUser.email,
-      role: updatedUser.role,
-      profilePicture: updatedUser.profilePicture,
-      message: "Profile updated successfully",
+      ...updatedUser._doc,
+      profile,
     });
   } catch (error) {
+    console.error("Update profile error:", error);
     res.status(500).json({ message: error.message });
   }
 };
